@@ -70,16 +70,20 @@ doesn't accumulate), the 0.5 s GX hang watchdog, and sleeps. Frames are paced by
 
 ## GPU
 
-The stand-in's 2-CU iGPU at Battlerock Galaxy's first stop: a 1280x720 window, internal resolution 1x, 60 fps,
-default settings. GPU time per frame from the frame's timestamps; by pass with `GALAXY_GPU_PASSES=1` (present-stats'
-`gpu-pass-ms`).
+The stand-in's 2-CU iGPU at Battlerock Galaxy's first stop: a 1280x720 window, 60 fps, default settings. GPU time per
+frame from the frame's timestamps; by pass with `GALAXY_GPU_PASSES=1` (present-stats' `gpu-pass-ms`, with the
+pipeline statistics in `gpu-stats`), by pipeline with `GALAXY_GPU_DRAWS=1` (`[gpu-draws]`, `[pso-desc]`).
 
-| | GPU ms/frame | evidence |
+| internal resolution 1x | GPU ms/frame | evidence |
 |---|---|---|
 | 2.0.13-beta.1 | 11.6: the scene 10.5, presentation (post-processing, UI) 0.68, EFB copies 0.35 | M |
 | Curved surfaces off | 5.15 | M |
 | Every curved patch held to one segment (diagnostic build) | 11.37: the cost is the patch stages, not the triangles they add | M |
 | A curved draw's flat triangles drawn as triangles | 9.04 against 11.88 in the run before it; render thread 80.1 against 77.6 ms/s | M |
+| Patches the hull shader would leave whole drawn as triangles (GPU sort) | 5.86 against 9.02; the sort 0.6-0.9 of it | M |
+
+At 3x: 17.48 ms (57 fps) against 18.97 (52.7 fps); the frame is pixel-bound there (24 million pixel shader
+invocations against 4.1 million at 1x).
 
 - Curved surfaces: in the models that bend, 53 % of the triangles (Battlerock: 141,087 of 265,000) have no corner
   with a displacement or crease normal. The hull shader gives each such edge one segment and the domain shader moves
@@ -88,10 +92,24 @@ default settings. GPU time per frame from the frame's timestamps; by pass with `
   (`DrawCall::flat_index_count`). An edge shared with a curved neighbour has flat corners, so it stays one straight
   segment there too. Only draws whose triangle order cannot show are split: no blending or logic op, depth tested by
   nearness and written. The plain pipeline compiles on a worker; until it is ready the draw stays whole.
-- Pictures (same run, `GALAXY_TEST_CURVED_SPLIT_AB=1` splits every other frame; the pause menu holds the scene, which
-  is still drawn each frame): identical at 1x, and at 3x with 4x MSAA. With ray tracing High the paused scene changes
-  a little every frame by itself: frames two apart, split alike, differ more (28k pixels) than neighbours (21k). At
-  120 fps, split always, game and interpolated frames differ as without the split (one spot, 1 of 255).
+- Of the remaining patches, 79 % at 1x and 65 % at 3x get one segment on every edge from the hull shader (domain
+  shader invocations with and without them, pipeline statistics): small or distant triangles. Dropping only those
+  cut 2.4 ms though they cover almost no pixels. A compute pass before each command list (D3D12;
+  `ShaderGenerator::curve_sort_source`) evaluates the hull shader's edge rule (`curve_value`, one HLSL function for
+  both) for every curved triangle and writes two index lists in the draw's order, the whole triangles and the
+  patches, drawn by `ExecuteIndirect`. A triangle goes whole only well under the rule's limit (0.8 of it) and never
+  with a corner near the eye plane, so the two stages' rounding cannot part an edge. Interpolated frames draw the
+  static split (their camera is another).
+- The GPU read the resident decoded vertices from upload memory: the sort took 1.27 ms reading them there and 0.46 ms
+  from a local copy. They are now kept in local memory, each run copied once when it becomes resident (Vulkan keeps
+  host-visible memory, local on the unified-memory devices it targets first).
+- Pictures (same run, `GALAXY_TEST_CURVED_SPLIT_AB=1` draws curved surfaces whole every other frame; the pause menu
+  holds the scene, which is still drawn each frame), with the sort: identical at 1x, at 3x, and at 1x with 4x MSAA.
+  At 3x with 4x MSAA two pixels at an edge differ by up to 3 of 255: with the sort a triangle moves between the two
+  lists, and samples exactly on an edge where two surfaces meet at equal depth go to whichever is drawn last. With a
+  tighter limit (0.25) two other pixels differ by 1. With ray tracing High the paused scene changes a little every
+  frame by itself: frames two apart, drawn alike, differ more (28k pixels) than neighbours (21k). At 120 fps game and
+  interpolated frames differ as without the split (one spot, 1 of 255).
 
 ## Planned, measured before adopted (H)
 
