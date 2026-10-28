@@ -82,8 +82,9 @@ pipeline statistics in `gpu-stats`), by pipeline with `GALAXY_GPU_DRAWS=1` (`[gp
 | A curved draw's flat triangles drawn as triangles | 9.04 against 11.88 in the run before it; render thread 80.1 against 77.6 ms/s | M |
 | Patches the hull shader would leave whole drawn as triangles (GPU sort) | 5.86 against 9.02; the sort 0.6-0.9 of it | M |
 
-At 3x: 17.48 ms (57 fps) against 18.97 (52.7 fps); the frame is pixel-bound there (24 million pixel shader
-invocations against 4.1 million at 1x).
+At 3x: 17.48 ms (57 fps) against 18.97 (52.7 fps) with the sort; then 15.84 ms (60 fps) with debanding in the window
+(presentation 4.18 -> 1.85 ms). The frame is pixel-bound there (24 million pixel shader invocations against 4.1
+million at 1x).
 
 - Curved surfaces: in the models that bend, 53 % of the triangles (Battlerock: 141,087 of 265,000) have no corner
   with a displacement or crease normal. The hull shader gives each such edge one segment and the domain shader moves
@@ -103,6 +104,11 @@ invocations against 4.1 million at 1x).
 - The GPU read the resident decoded vertices from upload memory: the sort took 1.27 ms reading them there and 0.46 ms
   from a local copy. They are now kept in local memory, each run copied once when it becomes resident (Vulkan keeps
   host-visible memory, local on the unified-memory devices it targets first).
+- Debanding ran at the picture's own size before scaling, 3 ms of the 3x frame (`GALAXY_DEBAND=0`: presentation 4.18
+  -> 1.16 ms): 3 million pixels, taps up to 70 pixels away. A reduced picture is now scaled to the window first and
+  debanded there (a third of the pixels, the radius the same share of the height, the dither at the size it is
+  seen); an enlarged one as before. Same run (`GALAXY_TEST_DEBAND_AB=1` alternates the two): the paused Battlerock
+  frame differs by at most 4 of 255 everywhere; the title's sky, contrast stretched, is smooth in both.
 - Pictures (same run, `GALAXY_TEST_CURVED_SPLIT_AB=1` draws curved surfaces whole every other frame; the pause menu
   holds the scene, which is still drawn each frame), with the sort: identical at 1x, at 3x, and at 1x with 4x MSAA.
   At 3x with 4x MSAA two pixels at an edge differ by up to 3 of 255: with the sort a triangle moves between the two
