@@ -161,6 +161,14 @@ the game's 60):
 - The neighbour taps (a-trous, spatial reuse, upsampling, shadow blurs) read a 12-byte guide the G-buffer pass copies
   from its records, bit for bit (`gb_guide`): 4x 9.77 -> 9.44 ms (denoise 2.95 -> 2.73, shadow 0.90 -> 0.80).
 - GPU timers serialise the work: with `GALAXY_GPU_PASSES` and `GALAXY_RT_PASS_TIMING` on, 3x fell from 240 to 120 fps.
+- By dispatch (`GALAXY_RT_PASS_TIMING=2`, `[rt-engine-kernels]`), 4x: G-buffer 0.92 ms, direct 1.05 and its spatial
+  reuse 1.03 (up to 25 target evaluations a pixel: the generalized balance heuristic over five samples), the sun
+  shadow's blur, post and stabilisation 0.30, 0.31 and 0.19, indirect 1.75 and its spatial reuse 0.30, specular 0.47,
+  temporal 0.68, the five a-trous iterations 0.45, 0.38, 0.39, 0.42 and 0.43, final 0.35.
+- The a-trous costs the same at every step, so it is not its far taps' cache misses. Tried and not kept, same picture:
+  its weights' exponentials merged (half the transcendentals a tap; denoise 2.705 -> 2.696 ms), its taps of steps 1-4
+  staged in group memory (every iteration slower, 0.45 -> 0.54 ms at step 1: the 16 KB a group lowers occupancy), its
+  rows looped instead of unrolled (0.445 -> 0.465).
 
 ## Planned, measured before adopted (H)
 
