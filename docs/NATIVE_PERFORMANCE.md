@@ -125,6 +125,26 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   frame by itself: frames two apart, drawn alike, differ more (28k pixels) than neighbours (21k). At 120 fps game and
   interpolated frames differ as without the split (one spot, 1 of 255).
 
+### High end: 240 fps with ray tracing
+
+RTX 5090, Battlerock, a 3840 x 2160 window, ray tracing High, 240 fps (frame interpolation fills the presents between
+the game's 60):
+
+| internal resolution | presented | ray tracing engine per game frame | evidence |
+|---|---|---|---|
+| 6x (3840 x 3168) | 29-35 fps: the game's own frames, none interpolated | 22.6 ms (denoise 8.0, direct 4.6, indirect 4.5, shadow 2.0, G-buffer 1.9) | M |
+| 4x (2560 x 2112) | 57 fps: the GPU full, interpolation off | 9.4 ms | M |
+| 3x (1920 x 1584) | 240 fps: three interpolated frames a game frame | 5.6 ms | M |
+| 3x, ray tracing off | 240 fps, 0.14 ms of GPU a present | none | M |
+
+- The engine's cost follows the internal resolution's pixels. An interpolated frame costs 1.43 ms of GPU at 3x; the
+  interpolation's cadence governor drops to fewer interpolated frames when one misses its present slot, and a game
+  frame's tracing runs ahead of them on the same queue (the first interpolated frame after it presents 1-2 ms late).
+  240 fps at 4x needs the engine under about 4 ms.
+- The neighbour taps (a-trous, spatial reuse, upsampling, shadow blurs) read a 12-byte guide the G-buffer pass copies
+  from its records, bit for bit (`gb_guide`): 4x 9.77 -> 9.44 ms (denoise 2.95 -> 2.73, shadow 0.90 -> 0.80).
+- GPU timers serialise the work: with `GALAXY_GPU_PASSES` and `GALAXY_RT_PASS_TIMING` on, 3x fell from 240 to 120 fps.
+
 ## Planned, measured before adopted (H)
 
 - **ThinLTO with whole-program devirtualisation.** Inlines across units (`OSRestoreInterrupts`, `GXBegin`, the `MR::`
