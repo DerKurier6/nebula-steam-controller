@@ -93,7 +93,9 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   flat ones first: those draw as a triangle list with the same shaders less the patch stages, the rest as patches
   (`DrawCall::flat_index_count`). An edge shared with a curved neighbour has flat corners, so it stays one straight
   segment there too. Only draws whose triangle order cannot show are split: no blending or logic op, depth tested by
-  nearness and written. The plain pipeline compiles on a worker; until it is ready the draw stays whole.
+  nearness and written; or sums (both blend factors one, added or subtracted, into the fixed-point EFB, depth not
+  written), whose clamped results do not depend on the order. The plain pipeline compiles on a worker; until it is
+  ready the draw stays whole.
 - Of the remaining patches, 79 % at 1x and 65 % at 3x get one segment on every edge from the hull shader (domain
   shader invocations with and without them, pipeline statistics): small or distant triangles. Dropping only those
   cut 2.4 ms though they cover almost no pixels. A compute pass before the draws (`ShaderGenerator::curve_sort_source`;
@@ -157,6 +159,14 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   them. Second start at max settings: 174 of 174 pipelines from the library, none compiled. The frames of 50 ms or
   more left on a second start are the boot (754-777 ms after the first game frame) and the galaxy's load, not
   pipelines.
+- The shadow volumes (the alpha-only sums above: 40 draws, 6,240 triangles a frame at Battlerock) drew whole, every
+  triangle a patch. Split, the stand-in at 1x: 5.28 / 5.37 / 5.28 -> 5.02 / 5.01 / 5.14 ms (three alternating pairs;
+  scene 3.58 -> 3.20, sort 0.67 -> 0.81), hull shader invocations 14.2k -> 7.6k a frame, domain 74.9k -> 55.0k. Same
+  run (`GALAXY_TEST_CURVED_SPLIT_AB`, paused): identical.
+- Interpolation's vertex blend and physical ray tracing's de-baking are left out of the vertex shaders of frames that
+  run neither (`kVsFeature*`). The blend read a buffer per vertex and every attribute (it blends them all), so every
+  attribute was fetched. No change measured on the stand-in at 1x (three pairs, within run-to-run noise); same run
+  (blend and none on alternate frames, paused): identical.
 - Code only ray tracing runs is left out of the pixel shaders of a scene drawn without it (`kPsKeyRtPaths`): the
   enhanced lighting's branches on header bits 16, 17 and 31 and the clear-ice tint (two sRGB round trips) in every
   textured shader. Lit enhanced shaders: 709-741 -> 468-505 DXBC slots, RDNA3 1391-1764 -> 1180-1535 instructions,
