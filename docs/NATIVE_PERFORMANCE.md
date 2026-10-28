@@ -103,6 +103,11 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   `vkCmdDrawIndexedIndirect`). A triangle goes whole only well under the rule's limit (0.8 of it) and never
   with a corner near the eye plane, so the two stages' rounding cannot part an edge. Interpolated frames draw the
   static split (their camera is another).
+- A split draw's flat triangles come first; they draw from its own indices before the sort's lists, so the sort reads
+  only the rest (Battlerock: 16,058 of 38,550 triangles a frame): the sort 0.92 -> 0.69 ms, the frame 5.79 -> 5.67
+  (Vulkan 0.91 -> 0.82 and 6.78 -> 6.76). The triangles draw in the order they did. Not kept: each vertex's corner
+  worked out once in a pass before the classification and stored (64 bytes a vertex) took the sort from 0.88 to
+  1.82 ms; the stored corners cost more to read back than the arithmetic they save.
 - The GPU read the resident decoded vertices from upload memory: the sort took 1.27 ms reading them there and 0.46 ms
   from a local copy. They are now kept in local memory, each run copied once when it becomes resident (Vulkan writes
   them straight into device memory the CPU can map, `vk::BufferPlace::DeviceMapped`: unified memory, resizable BAR,
@@ -126,10 +131,11 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   lists, and samples exactly on an edge where two surfaces meet at equal depth go to whichever is drawn last. With a
   tighter limit (0.25) two other pixels differ by 1. With ray tracing High the paused scene changes a little every
   frame by itself: frames two apart, drawn alike, differ more (28k pixels) than neighbours (21k). At 120 fps game and
-  interpolated frames differ as without the split (one spot, 1 of 255). One D3D12 run of seven at 1x paused where
-  36 pixels next to a curved model, under the pause menu, differ by up to 3 of 255: open. Not position rounding (the
-  plain and curved vertex shaders compute it with the same DXBC, the same dp4s); the lead is draw order, a triangle
-  the sort moves between the lists tying at equal depth with one that stays.
+  interpolated frames differ as without the split (one spot, 1 of 255). One D3D12 run of seven (and one of two since)
+  at 1x paused where 36 pixels next to a curved model, under the pause menu, differ by up to 3 of 255: open, never
+  seen on Vulkan (32-bit float depth against D3D12's 24 bits). Not position rounding (the plain and curved vertex
+  shaders compute it with the same DXBC, the same dp4s); the lead is draw order, a triangle the sort moves between
+  the lists tying at equal depth with one that stays.
 - Vulkan, the stand-in at 1x: 5.63 ms of scene, 0.92 of sort, 1.08 of copies and presentation (D3D12: 3.92, 0.87,
   1.02); without curved surfaces 5.07 ms a present against 3.93. The sort read the resident vertices from host memory
   and wrote its lists there (1.48 ms); both now lie in device memory. The draws do the same work on both APIs (the
