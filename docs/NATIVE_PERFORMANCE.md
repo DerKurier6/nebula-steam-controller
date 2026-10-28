@@ -82,9 +82,9 @@ pipeline statistics in `gpu-stats`), by pipeline with `GALAXY_GPU_DRAWS=1` (`[gp
 | A curved draw's flat triangles drawn as triangles | 9.04 against 11.88 in the run before it; render thread 80.1 against 77.6 ms/s | M |
 | Patches the hull shader would leave whole drawn as triangles (GPU sort) | 5.86 against 9.02; the sort 0.6-0.9 of it | M |
 
-At 3x: 17.48 ms (57 fps) against 18.97 (52.7 fps) with the sort; then 15.84 ms (60 fps) with debanding in the window
-(presentation 4.18 -> 1.85 ms). The frame is pixel-bound there (24 million pixel shader invocations against 4.1
-million at 1x).
+At 3x: 17.48 ms (57 fps) against 18.97 (52.7 fps) with the sort; 15.84 ms (60 fps) with debanding in the window
+(presentation 4.18 -> 1.85 ms); 14.82 ms with the game's clears as clears (1x: 5.75 against 5.99). The frame is
+pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x).
 
 - Curved surfaces: in the models that bend, 53 % of the triangles (Battlerock: 141,087 of 265,000) have no corner
   with a displacement or crease normal. The hull shader gives each such edge one segment and the domain shader moves
@@ -109,6 +109,14 @@ million at 1x).
   debanded there (a third of the pixels, the radius the same share of the height, the dither at the size it is
   seen); an enlarged one as before. Same run (`GALAXY_TEST_DEBAND_AB=1` alternates the two): the paused Battlerock
   frame differs by at most 4 of 255 everywhere; the title's sky, contrast stretched, is smooth in both.
+- The game clears the EFB by drawing a quad (`MainLoopFramework::clearEfb`, colour and depth; `MR::clearZBuffer`, depth
+  only) whose pixel shader writes the depth of a Z texture with the compare always: every pixel exports its depth,
+  which keeps the early depth test and fast clears off (at 3x: 0.81 and 0.76 ms). The game now marks the quad
+  (`__NebulaGXClearQuadMarker`, the texture's depth); the renderer clears the depth (the shader's formula,
+  1 - z/2^24) and draws the colour, where written, with the same quad less the Z texture and the depth compare, so the
+  colour is the shader's own (0.33 ms). A quad that is not the expected one (another compare, blending, a 16-bit
+  depth EFB, a viewport short of the scissor) draws as written. Same run (`GALAXY_TEST_CLEAR_QUAD_AB=1`, paused):
+  identical at 1x and at 3x with 4x MSAA.
 - Pictures (same run, `GALAXY_TEST_CURVED_SPLIT_AB=1` draws curved surfaces whole every other frame; the pause menu
   holds the scene, which is still drawn each frame), with the sort: identical at 1x, at 3x, and at 1x with 4x MSAA.
   At 3x with 4x MSAA two pixels at an edge differ by up to 3 of 255: with the sort a triangle moves between the two
