@@ -147,6 +147,22 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   never drawn on Vulkan (the curve data, TEXCOORD16, had no location between stages); once built they drew unculled,
   under a lower-left domain origin that reversed their winding. NVIDIA's driver crashes building them: they stay off
   there (`DeviceQuirks::no_tessellation`).
+- Pipelines were created again at every start (`GALAXY_TEST_HITCHES=1`, frames of 50 ms or more, stand-in at 1x: 7 on
+  a second start, the worst 748 ms; 11-13 on the first, 800-860 ms). psos.bin's reload stopped at the first curved
+  surface's key (patch topology, which the key check did not accept) and the repair dropped the rest: 2 of 167 keys
+  known at the next start. The D3D12 pipeline library (pipelines.bin) was written only at shutdown, which the host
+  never reaches (it ends with `std::_Exit`): every start had the driver compile every pipeline. The background flush
+  that writes the shader and key caches every 20 s now writes the library too (Vulkan's already wrote
+  `vk_pipelines.bin`), and curved keys reload; their stand-in (uber) pipelines are built flat, as the draw path builds
+  them. Second start at max settings: 174 of 174 pipelines from the library, none compiled. The frames of 50 ms or
+  more left on a second start are the boot (754-777 ms after the first game frame) and the galaxy's load, not
+  pipelines.
+- Code only ray tracing runs is left out of the pixel shaders of a scene drawn without it (`kPsKeyRtPaths`): the
+  enhanced lighting's branches on header bits 16, 17 and 31 and the clear-ice tint (two sRGB round trips) in every
+  textured shader. Lit enhanced shaders: 709-741 -> 468-505 DXBC slots, RDNA3 1391-1764 -> 1180-1535 instructions,
+  VGPRs 46-51 -> 43-46. The stand-in at 1x with every setting but ray tracing: 8.07 / 7.85 -> 7.64 / 7.53 ms (two
+  alternating pairs); at 4K within run-to-run noise. Pictures without ray tracing are unchanged by construction: the
+  removed code ran only on header bits ray tracing sets.
 
 ### Low end at 4K: every setting but ray tracing
 
