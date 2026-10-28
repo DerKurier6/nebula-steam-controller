@@ -72,7 +72,8 @@ doesn't accumulate), the 0.5 s GX hang watchdog, and sleeps. Frames are paced by
 
 The stand-in's 2-CU iGPU at Battlerock Galaxy's first stop: a 1280x720 window, 60 fps, default settings. GPU time per
 frame from the frame's timestamps; by pass with `GALAXY_GPU_PASSES=1` (present-stats' `gpu-pass-ms`, with the
-pipeline statistics in `gpu-stats`), by pipeline with `GALAXY_GPU_DRAWS=1` (`[gpu-draws]`, `[pso-desc]`).
+pipeline statistics in `gpu-stats`), by pipeline with `GALAXY_GPU_DRAWS=1` (`[gpu-draws]`, `[pso-desc]`); the same on
+Vulkan, whose log also lists the device's memory heaps and types (`[vulkan] memory`).
 
 | internal resolution 1x | GPU ms/frame | evidence |
 |---|---|---|
@@ -103,8 +104,9 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   with a corner near the eye plane, so the two stages' rounding cannot part an edge. Interpolated frames draw the
   static split (their camera is another).
 - The GPU read the resident decoded vertices from upload memory: the sort took 1.27 ms reading them there and 0.46 ms
-  from a local copy. They are now kept in local memory, each run copied once when it becomes resident (Vulkan keeps
-  host-visible memory, local on the unified-memory devices it targets first).
+  from a local copy. They are now kept in local memory, each run copied once when it becomes resident (Vulkan writes
+  them straight into device memory the CPU can map, `vk::BufferPlace::DeviceMapped`: unified memory, resizable BAR,
+  else host memory).
 - Debanding ran at the picture's own size before scaling, 3 ms of the 3x frame (`GALAXY_DEBAND=0`: presentation 4.18
   -> 1.16 ms): 3 million pixels, taps up to 70 pixels away. A reduced picture is now scaled to the window first and
   debanded there (a third of the pixels, the radius the same share of the height, the dither at the size it is
@@ -125,13 +127,20 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   tighter limit (0.25) two other pixels differ by 1. With ray tracing High the paused scene changes a little every
   frame by itself: frames two apart, drawn alike, differ more (28k pixels) than neighbours (21k). At 120 fps game and
   interpolated frames differ as without the split (one spot, 1 of 255). One D3D12 run of seven at 1x paused where
-  36 pixels next to a curved model, under the pause menu, differ by up to 3 of 255: open (a decal's depth tie against
-  the patches' positions is the lead).
-- Vulkan, the stand-in at 1x: 7.09 ms of GPU a present with curved surfaces (the sort's dispatches, in the upload
-  commands, untimed), 5.07 without (D3D12: 5.72 and 3.93). Pictures: same run, paused, identical at 1x; at 3x with
-  4x MSAA two pixels differ by 1 of 255. Curved surfaces had never drawn on Vulkan (the curve data, TEXCOORD16, had no
-  location between stages); once built they drew unculled, under a lower-left domain origin that reversed their
-  winding. NVIDIA's driver crashes building them: they stay off there (`DeviceQuirks::no_tessellation`).
+  36 pixels next to a curved model, under the pause menu, differ by up to 3 of 255: open. Not position rounding (the
+  plain and curved vertex shaders compute it with the same DXBC, the same dp4s); the lead is draw order, a triangle
+  the sort moves between the lists tying at equal depth with one that stays.
+- Vulkan, the stand-in at 1x: 5.63 ms of scene, 0.92 of sort, 1.08 of copies and presentation (D3D12: 3.92, 0.87,
+  1.02); without curved surfaces 5.07 ms a present against 3.93. The sort read the resident vertices from host memory
+  and wrote its lists there (1.48 ms); both now lie in device memory. The draws do the same work on both APIs (the
+  same vertex, patch, primitive and pixel shader invocations) and the scene's gap is the same at 3x (10.94 against
+  9.23 ms), so it is not pixel work: by pipeline, most draws take 1.3 to 2 times as long, and the shadow volumes'
+  additive alpha pass 0.98 ms against 0.20 while their subtractive pass, the same geometry and shaders, costs the same
+  on both (open; measured on AMD's Windows driver only). Placing the rings in device memory changed nothing.
+  Pictures: same run, paused, identical at 1x; at 3x with 4x MSAA two pixels differ by 1 of 255. Curved surfaces had
+  never drawn on Vulkan (the curve data, TEXCOORD16, had no location between stages); once built they drew unculled,
+  under a lower-left domain origin that reversed their winding. NVIDIA's driver crashes building them: they stay off
+  there (`DeviceQuirks::no_tessellation`).
 
 ### High end: 240 fps with ray tracing
 
