@@ -95,10 +95,11 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   nearness and written. The plain pipeline compiles on a worker; until it is ready the draw stays whole.
 - Of the remaining patches, 79 % at 1x and 65 % at 3x get one segment on every edge from the hull shader (domain
   shader invocations with and without them, pipeline statistics): small or distant triangles. Dropping only those
-  cut 2.4 ms though they cover almost no pixels. A compute pass before each command list (D3D12;
-  `ShaderGenerator::curve_sort_source`) evaluates the hull shader's edge rule (`curve_value`, one HLSL function for
-  both) for every curved triangle and writes two index lists in the draw's order, the whole triangles and the
-  patches, drawn by `ExecuteIndirect`. A triangle goes whole only well under the rule's limit (0.8 of it) and never
+  cut 2.4 ms though they cover almost no pixels. A compute pass before the draws (`ShaderGenerator::curve_sort_source`;
+  D3D12: a command list before each, Vulkan: the end of the frame's upload commands) evaluates the hull shader's
+  edge rule (`curve_value`, one HLSL function for both) for every curved triangle and writes two index lists in the
+  draw's order, the whole triangles and the patches, drawn indirectly (`ExecuteIndirect`,
+  `vkCmdDrawIndexedIndirect`). A triangle goes whole only well under the rule's limit (0.8 of it) and never
   with a corner near the eye plane, so the two stages' rounding cannot part an edge. Interpolated frames draw the
   static split (their camera is another).
 - The GPU read the resident decoded vertices from upload memory: the sort took 1.27 ms reading them there and 0.46 ms
@@ -123,7 +124,14 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   lists, and samples exactly on an edge where two surfaces meet at equal depth go to whichever is drawn last. With a
   tighter limit (0.25) two other pixels differ by 1. With ray tracing High the paused scene changes a little every
   frame by itself: frames two apart, drawn alike, differ more (28k pixels) than neighbours (21k). At 120 fps game and
-  interpolated frames differ as without the split (one spot, 1 of 255).
+  interpolated frames differ as without the split (one spot, 1 of 255). One D3D12 run of seven at 1x paused where
+  36 pixels next to a curved model, under the pause menu, differ by up to 3 of 255: open (a decal's depth tie against
+  the patches' positions is the lead).
+- Vulkan, the stand-in at 1x: 7.09 ms of GPU a present with curved surfaces (the sort's dispatches, in the upload
+  commands, untimed), 5.07 without (D3D12: 5.72 and 3.93). Pictures: same run, paused, identical at 1x; at 3x with
+  4x MSAA two pixels differ by 1 of 255. Curved surfaces had never drawn on Vulkan (the curve data, TEXCOORD16, had no
+  location between stages); once built they drew unculled, under a lower-left domain origin that reversed their
+  winding. NVIDIA's driver crashes building them: they stay off there (`DeviceQuirks::no_tessellation`).
 
 ### High end: 240 fps with ray tracing
 
