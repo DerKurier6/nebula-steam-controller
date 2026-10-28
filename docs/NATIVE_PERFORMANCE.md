@@ -174,6 +174,26 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   alternating pairs); at 4K within run-to-run noise. Pictures without ray tracing are unchanged by construction: the
   removed code ran only on header bits ray tracing sets.
 
+### Native draws
+
+The game's GX calls still reach the renderer as GX commands, parsed into GX register state. They are replaced by native
+draws subsystem by subsystem (design: the shared NATIVE-RENDER note; order: shapes, materials, records for 2D,
+particles and immediate draws, then the command stream goes).
+
+- Model shapes: J3DShapeDraw draws its list by a handle (`__NebulaGXCallShapeDisplayList`, the shape-list marker).
+  Each list is built once on a worker (`galaxy/gx/native_shapes.h`) from the list and vertex state of its first draw:
+  decoded by the renderer's own decoder, each distinct vertex once, its triangles in the list's order. Drawn by handle
+  while the list and vertex state match; the array bytes it was built from are compared with memory once per batch of
+  guest writes, as the decoded cache does; a changed list or state is built again once; arrays the game rewrites keep
+  the GX path. Built at first draw, not at load: ModelUtil edits models after they load (texture-matrix indices added
+  to lists, new vertex descriptions, position arrays halved). Battlerock, stand-in at 1x: 999,672 of 1,000,000 shape
+  draws native (the rest each shape's first draw and the frame its build takes), no refusals; the parser's commands a
+  frame 77 KB -> 28 KB; render thread 84.0 / 84.2 / 84.4 -> 80.1 / 78.6 / 77.2 ms/s, GPU 4.96 / 4.99 / 5.03 ->
+  4.92 / 4.83 / 4.80 ms. Same run (`GALAXY_TEST_NATIVE_SHAPES_AB`, native every other presented frame, paused):
+  identical; with ray tracing High the native and GX frames differ no more than two GX frames do.
+- Matrix palette snapshots copy 3,584 of their 6,656 bytes: XF memory has nothing at 0x100-0x3FF, which no reader
+  addresses (98 snapshots a frame at Battlerock: 652,288 -> 351,232 bytes copied).
+
 ### Low end at 4K: every setting but ray tracing
 
 The stand-in's 2-CU iGPU, Battlerock, a 3840 x 2160 window, internal resolution 5x (3200 x 2640; the picture
