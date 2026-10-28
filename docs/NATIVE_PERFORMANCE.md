@@ -148,6 +148,49 @@ pixel-bound there (24 million pixel shader invocations against 4.1 million at 1x
   under a lower-left domain origin that reversed their winding. NVIDIA's driver crashes building them: they stay off
   there (`DeviceQuirks::no_tessellation`).
 
+### Low end at 4K: every setting but ray tracing
+
+The stand-in's 2-CU iGPU, Battlerock, a 3840 x 2160 window, internal resolution 5x (3200 x 2640; the picture
+3200 x 2280), SMAA ultra, ambient occlusion, per-pixel and enhanced lighting, curved surfaces, 16x anisotropic
+filtering, enhanced mipmaps and bloom, 240 fps asked. The game runs at 15-18 fps there, so nothing is interpolated.
+D3D12, GPU ms a game frame:
+
+| pass | before | after | evidence |
+|---|---|---|---|
+| presentation | 16.1 (debanding 13.8) | 8.8 (debanding 6.0, scaling to the window 2.4) | M |
+| SMAA (scene) | 6.9 | 6.2 | M |
+| ambient occlusion | 4.3 (its apply 3.5) | apply 2.3 | M |
+| EFB copies | 5.0 | 4.9 | M |
+| XFB copy | 3.8 | 3.6 | M |
+| scene | 22-28, by run | the clear quad's colour draw (1.1) gone | M |
+
+- Debanding at the picture's size was 13.8 ms: for every pixel, the rings' random taps (up to 200 pixels away at
+  this size) and their arithmetic (a hash per random number, a sine and a cosine a ring). Taking only the far taps
+  from a reduced picture left 10.9 ms: the arithmetic, not the cache, was the cost. From 1080 lines the rings run on
+  the picture reduced by a box (2x2 to 2159 lines, 4x4 to 4319, 8x8 above: `PASS_DEBAND_REDUCE`,
+  `PASS_DEBAND_SMOOTH`), and each pixel keeps its own edge test, takes the smoothed picture where it lies within the
+  threshold of it, and is dithered only where it lies between levels (`PASS_DEBAND_APPLY`): 6.0 ms. 1920 x 1080 at
+  3x: the frame 33.6 -> 23.8 ms. Below 1080 lines it is the one pass as before. Same run (the one pass and the
+  three on alternate frames, paused): at most 4 of 255 apart with the 2x2 box, 3 with 4x4 and on the source-size
+  path, the size of the dither; the smooth regions alike when contrast stretched.
+- The game's clear quad (`MainLoopFramework::clearEfb`) draws one colour, C0 and A0 of a one-stage TEV. Its marker
+  now carries the colour, and the renderer clears it as it clears the depth, with the values the quad's pixel shader
+  stores (8-bit colour; on an EFB with alpha the 6-bit alpha: the TEV's, where one writes zero, or the destination
+  alpha constant; `kEfbClearExact`). Fog, the temporal upscalers' targets or a lit translucent keep the quad. Same run
+  (`GALAXY_TEST_CLEAR_QUAD_AB`): identical at 1x and 3x on D3D12 and Vulkan.
+- Ambient occlusion's apply read the depth and four occlusion pixels with five loads a pixel. It now gathers the four
+  (two gathers) and, before reading the depth, skips a pixel whose least occlusion leaves its colour within a half
+  level: the visibility is a weighted mean of the four and the colour's multiplier rises with it, so those pixels
+  were left unwritten before too. The same values and arithmetic: the picture is unchanged by construction.
+- SMAA's blend into the EFB wrote every pixel, a pixel without blending weights writing back the copy's own colour;
+  it now leaves those unwritten (`PASS_SMAA_BLEND_KEEP`): 2.7 -> 1.9 ms. Same run: identical at 1x and 3x.
+- One-channel EFB copies (I4, and I8 from R, G, B or A, such as the A8 screen capture) are R8 textures viewed as R in
+  every channel, as decoded I8 textures are: a quarter of the memory (the 5x capture 30 -> 7.5 MB); the copy's time
+  did not change (it reads more than it writes). Same run: identical at 1x; at 3x one pixel differs by 1 of 255.
+- Left: the planet's per-pixel-lit pipelines (about 10 ms; curved surfaces off barely change them, per-pixel and
+  enhanced lighting off halves them), the game's full-screen effects (about 5 ms), SMAA's copy and passes, the XFB
+  copy, debanding's apply and the scaling. Vulkan (same settings): 54.2 ms, presentation 10.5.
+
 ### High end: 240 fps with ray tracing
 
 RTX 5090, Battlerock, a 3840 x 2160 window, ray tracing High, 240 fps (frame interpolation fills the presents between
