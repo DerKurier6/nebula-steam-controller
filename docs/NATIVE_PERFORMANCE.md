@@ -68,6 +68,31 @@ doesn't accumulate), the 0.5 s GX hang watchdog, and sleeps. Frames are paced by
 | Command ring, 16 MB | 16 MB of memory | the game writes far less than that between flushes; more aborts with a message | a frame that needs more |
 | Spans end only at flushes | the host gets a frame's commands in a few spans | spans never split a command | finer spans if the renderer wants to start earlier |
 
+## GPU
+
+The stand-in's 2-CU iGPU at Battlerock Galaxy's first stop: a 1280x720 window, internal resolution 1x, 60 fps,
+default settings. GPU time per frame from the frame's timestamps; by pass with `GALAXY_GPU_PASSES=1` (present-stats'
+`gpu-pass-ms`).
+
+| | GPU ms/frame | evidence |
+|---|---|---|
+| 2.0.13-beta.1 | 11.6: the scene 10.5, presentation (post-processing, UI) 0.68, EFB copies 0.35 | M |
+| Curved surfaces off | 5.15 | M |
+| Every curved patch held to one segment (diagnostic build) | 11.37: the cost is the patch stages, not the triangles they add | M |
+| A curved draw's flat triangles drawn as triangles | 9.04 against 11.88 in the run before it; render thread 80.1 against 77.6 ms/s | M |
+
+- Curved surfaces: in the models that bend, 53 % of the triangles (Battlerock: 141,087 of 265,000) have no corner
+  with a displacement or crease normal. The hull shader gives each such edge one segment and the domain shader moves
+  nothing, so the tessellation stages output the triangle unchanged. A cached display list's triangles are split once,
+  flat ones first: those draw as a triangle list with the same shaders less the patch stages, the rest as patches
+  (`DrawCall::flat_index_count`). An edge shared with a curved neighbour has flat corners, so it stays one straight
+  segment there too. Only draws whose triangle order cannot show are split: no blending or logic op, depth tested by
+  nearness and written. The plain pipeline compiles on a worker; until it is ready the draw stays whole.
+- Pictures (same run, `GALAXY_TEST_CURVED_SPLIT_AB=1` splits every other frame; the pause menu holds the scene, which
+  is still drawn each frame): identical at 1x, and at 3x with 4x MSAA. With ray tracing High the paused scene changes
+  a little every frame by itself: frames two apart, split alike, differ more (28k pixels) than neighbours (21k). At
+  120 fps, split always, game and interpolated frames differ as without the split (one spot, 1 of 255).
+
 ## Planned, measured before adopted (H)
 
 - **ThinLTO with whole-program devirtualisation.** Inlines across units (`OSRestoreInterrupts`, `GXBegin`, the `MR::`
