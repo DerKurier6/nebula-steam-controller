@@ -197,6 +197,20 @@ particles and immediate draws, then the command stream goes).
   native and GX frames differ no more than two GX frames do.
 - Matrix palette snapshots copy 3,584 of their 6,656 bytes: XF memory has nothing at 0x100-0x3FF, which no reader
   addresses (98 snapshots a frame at Battlerock: 652,288 -> 351,232 bytes copied).
+- Display copies. SMG's copy to the XFB filters every frame (weights 32, 32, 0: each row averaged with the one above,
+  the Wii's deflicker), so it is a pass of its own: `display_filter_shader_source`, the general conversion's integer
+  arithmetic for a 1:1 copy without gamma (rows loaded, not filtered by the sampler; truncated to 8 bits, weighted,
+  shifted down by six). Same run (`GALAXY_TEST_DISPLAY_FILTER_AB`, paused): identical pictures and XFBs. Stand-in at
+  1x: XFB copy 0.14 -> 0.10 ms; 4K at 5x: 3.65 -> 2.61 ms. Vulkan has the same pass.
+- A copy that changes nothing (the identity filter at boot, no gamma, the whole picture, one EFB pixel to one XFB
+  pixel) is not copied: the EFB's colour target becomes the XFB (`can_hand_over_display_copy`), and the EFB takes an
+  idle texture. Its old picture is owed until the EFB is next read or partly drawn; a clear of all of it pays nothing,
+  a clear of part restores the bands around it. Presentation reads the picture from the top left of the taller
+  texture with its own passes (`SOURCE_BOX`: resampling, debanding, EASU, RCAS at window size); a runtime branch in
+  the shared passes cost 0.13 ms at 1x and 0.36 ms at 4K, so they are compiled apart. WARP test (`held_picture_on_warp`,
+  debanded and not): the held picture presents bit for bit as the same picture in its own texture, bilinear and
+  FSR 1, sharpened or not, enlarged, reduced, the same size and each axis apart; with the box passes switched off the
+  test fails in every path that samples. D3D12; Vulkan copies as before.
 
 ### Low end at 4K: every setting but ray tracing
 
