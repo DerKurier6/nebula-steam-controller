@@ -106,6 +106,7 @@ galaxy_host_options(galaxy_host_pointer_events)
 
 add_library(galaxy_native_input STATIC
     runtime/src/controller_roster.cpp
+    runtime/src/dsu_protocol.cpp
     runtime/src/generic_hid.cpp
     runtime/src/native_input.cpp
     runtime/src/playstation_controller.cpp
@@ -136,6 +137,7 @@ add_library(galaxy_native_host STATIC
     runtime/src/crash_report.cpp
     runtime/src/discord_presence.cpp
     runtime/src/controller_hid.cpp
+    runtime/src/dsu_client.cpp
     runtime/src/wiimote_hid.cpp)
 target_link_libraries(galaxy_native_host
     PUBLIC
@@ -154,6 +156,7 @@ target_link_libraries(galaxy_native_host
         cfgmgr32
         xinput9_1_0
         xaudio2
+        ws2_32
 )
 galaxy_host_options(galaxy_native_host)
 
@@ -621,6 +624,7 @@ galaxy_test(galaxy_controls_tests SOURCES ${rt}/controls_tests.cpp LIBS galaxy_r
 galaxy_test(galaxy_pad_controller_tests SOURCES ${rt}/pad_controller_tests.cpp
     LIBS galaxy_runtime_settings galaxy_native_input)
 galaxy_test(galaxy_native_input_tests SOURCES ${rt}/native_input_tests.cpp LIBS galaxy_native_input)
+galaxy_test(galaxy_dsu_tests SOURCES ${rt}/dsu_tests.cpp LIBS galaxy_native_input)
 galaxy_test(galaxy_host_pointer_events_tests SOURCES ${rt}/host_pointer_events_tests.cpp
     LIBS galaxy_host_pointer_events)
 galaxy_test(galaxy_diagnostic_stick_lease_tests SOURCES ${rt}/diagnostic_stick_lease_tests.cpp)

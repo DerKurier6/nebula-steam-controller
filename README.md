@@ -37,7 +37,9 @@ the Petari decompilation by SMGCommunity, compiled for the PC with the changes a
 
 - Keyboard and mouse, Xbox controllers, the Switch Pro and Switch 2 Pro Controllers, PlayStation controllers
   (DualShock 4, DualSense, DualSense Edge), the Steam Controller and generic HID controllers, remappable. Gyro
-  pointing and tilt where the controller has motion sensors; vibration follows the Wii Remote's motor.
+  pointing and tilt where the controller has motion sensors; vibration follows the Wii Remote's motor. Under Steam
+  Input, a Steam Controller's gyro comes through [SC2DSU](https://github.com/KillerPixelCrew/sc2dsu) or any other
+  cemuhook DSU server ([setup](docs/KEYBOARD_CONTROLS.md#motion-through-steam-input-sc2dsu-and-other-dsu-servers)).
 - Aspect ratios from 4:3 to 32:9, internal resolution up to 16x, frame interpolation above 60 FPS.
 - Anti-aliasing (SMAA, FXAA, MSAA), AMD FSR 3 and NVIDIA DLSS upscaling, anisotropic filtering, per-pixel lighting
   and ambient occlusion.

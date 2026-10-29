@@ -7,6 +7,7 @@
 #include "galaxy/platform_time.h"
 #include "galaxy/jaudio_host_mixer.h"
 #include "galaxy/controller_hid.h"
+#include "galaxy/dsu_client.h"
 #include "galaxy/wiimote_hid.h"
 #include "galaxy/input_bindings.h"
 #include "galaxy/native_input.h"
@@ -2262,6 +2263,10 @@ struct LivePad {
     galaxy::input::tilt::Vec3 gravity{0.0f, 1.0f, 0.0f};
     // XInput user index or Switch worker slot (with the scheme: identity).
     std::uint8_t device_slot = 0xFF;
+    // Motion from a DSU server (dsu_client.h, SC2DSU for the Steam Controllers) given to this pad, which has no
+    // sensors of its own: the client's settings (dsu.ini), not the scheme's, decide whether it points.
+    bool dsu_motion = false;
+    bool dsu_gyro_pointer = false;
 };
 
 // Vibration (controller_hid.h): the controller in use, its strength setting and the window focus. The live input
@@ -2324,6 +2329,52 @@ std::size_t collect_hid_pads(const galaxy::input::ControlsConfig& config,
         live.device_slot = pads[i].slot;
     }
     return count;
+}
+
+bool pad_has_input(const galaxy::input::PadSample& sample);
+
+// DSU motion (dsu_client.h) for a controller without sensors: Steam Input's virtual Xbox controller while Steam reads
+// the Steam Controller for this game, whose gyro SC2DSU serves. It goes to one pad: the last one without sensors that
+// had input, else the first such pad connected, XInput first (where Steam Input's controller appears). A pad with
+// motion of its own keeps it, and no pad gets a second source.
+void attach_dsu_motion(std::span<LivePad> pads) {
+    ensure_dsu_client_started();
+    DsuMotionState motion{};
+    if (!read_dsu_motion(motion, true) || !motion.live) return;
+    static std::uint32_t s_target = 0xFFFFFFFFu;  // (scheme << 8) | device slot
+    const auto key = [](const LivePad& pad) {
+        return (static_cast<std::uint32_t>(pad.sample.scheme) << 8u) | pad.device_slot;
+    };
+    const auto takes_motion = [](const LivePad& pad) { return pad.sample.connected && !pad.imu_live; };
+    for (const LivePad& pad : pads) {
+        if (takes_motion(pad) && pad_has_input(pad.sample)) s_target = key(pad);
+    }
+    LivePad* target = nullptr;
+    LivePad* fallback = nullptr;
+    for (LivePad& pad : pads) {
+        if (!takes_motion(pad)) continue;
+        if (key(pad) == s_target) target = &pad;
+        const bool xinput = pad.sample.scheme == galaxy::input::ControlScheme::Xbox;
+        if (fallback == nullptr || (xinput && fallback->sample.scheme != galaxy::input::ControlScheme::Xbox)) {
+            fallback = &pad;
+        }
+    }
+    if (target == nullptr) target = fallback;
+    if (target == nullptr) return;
+    const std::uint64_t now_us = controller_hid_now_us();
+    const bool shaking = motion.shake_until_us != 0u && now_us < motion.shake_until_us;
+    target->dsu_motion = true;
+    target->imu_live = true;
+    target->dsu_gyro_pointer = motion.gyro_pointer;
+    target->gyro_x = motion.gyro_x;
+    target->gyro_y = motion.gyro_y;
+    target->shake_remote = target->shake_remote || (shaking && motion.shake == galaxy::input::dsu::ShakeTarget::Remote);
+    target->shake_nunchuk =
+        target->shake_nunchuk || (shaking && motion.shake == galaxy::input::dsu::ShakeTarget::Nunchuk);
+    if (motion.tilt && motion.gravity_valid) {
+        target->gravity_valid = true;
+        target->gravity = motion.gravity;
+    }
 }
 
 bool pad_has_input(const galaxy::input::PadSample& sample) {
@@ -3944,6 +3995,7 @@ galaxy::input::WiimoteInputSnapshot build_native_hid_input_snapshot(
         }
     }
     const std::span<LivePad> live_pads(pads.data(), pad_count);
+    if (controller_mode_polls) attach_dsu_motion(live_pads);
     // Before the overlay takes the pads: the controller the player is using, for the CONTROLS page.
     for (const LivePad& pad : live_pads) {
         if (!pad.sample.connected) continue;
@@ -4041,7 +4093,7 @@ galaxy::input::WiimoteInputSnapshot build_native_hid_input_snapshot(
                 continue;
             }
             const galaxy::input::SchemeTuning& tuning = controls.config.tune(pad.sample.scheme);
-            const bool gyro_pointing = tuning.gyro_pointer && pad.imu_live;
+            const bool gyro_pointing = pad.dsu_motion ? pad.dsu_gyro_pointer : tuning.gyro_pointer && pad.imu_live;
             const bool touch_pointing = tuning.touch_pointer && pad.touch_live;
             galaxy::input::LogicalInput pad_logic = galaxy::input::evaluate_pad_bindings(
                 controls.config.table(pad.sample.scheme), pad.sample, trigger_threshold,

@@ -31,6 +31,7 @@ these checks cover what only a real controller shows. Mark each cell pass, fail 
 | Steam Deck | built in | trackpads not the mouse, R2/L2 not mouse buttons, for minutes on end (the watchdog); gyro; vibration |
 | Steam Controller (2015) | USB, receiver | right pad is the pointer; left pad clicks are the D-pad; no mouse; pad haptics as vibration |
 | Steam Input on | any of the above, started from Steam | the log says "left to Steam Input"; every press once |
+| Steam Input + SC2DSU | a Steam Controller, started from Steam, SC2DSU running | the log says "[dsu] motion from server slot 0"; the gyro points, shake spins, tilt steers; the motion stops when SC2DSU quits and comes back when it restarts |
 | 8BitDo | X-input, Switch, D-input modes | X: as Xbox; Switch: as Pro (motion if the pad has it); D: rebind on CONTROLS |
 | Generic HID pad | USB | buttons by number; rebind on CONTROLS |
 | Wii Remote (+ Nunchuk) | Bluetooth | read directly; IR pointer, speaker sounds, its motor |
