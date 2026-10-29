@@ -1,0 +1,137 @@
+# Builds Nebula for Windows on GitHub's servers: the host (NebulaNative.exe), the game module (smg_game.dll), the
+# disc importer and Nebula Setup, as docs/BUILDING.md does by hand. Every push to the branches below, and a manual
+# run from the Actions tab, uploads them as a run artifact; a pushed tag v* also publishes them as a release.
+#
+# Setup is unsigned (the upstream release key stays with upstream) and checks this repository's releases for
+# updates, so a build from here is never replaced by an upstream release.
+#
+# The ray-tracing material tables (tables\*.tsv) are not in the source tree; the package carries empty ones, which the
+# game reads exactly as missing tables (rt_materials.cpp): the ray-traced lighting uses its defaults.
+
+name: Windows build
+
+on:
+  push:
+    branches: [main, steam-controller-dsu-motion]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools (LLVM 19+, Ninja, Rust)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $clang = 'C:\Program Files\LLVM\bin\clang++.exe'
+          $major = 0
+          if (Test-Path $clang) {
+            $line = (& $clang --version | Select-Object -First 1)
+            Write-Host $line
+            $major = [int]([regex]::Match($line, 'version (\d+)').Groups[1].Value)
+          }
+          if ($major -lt 19) {
+            choco upgrade llvm -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'LLVM install failed' }
+            & $clang --version | Select-Object -First 1
+          }
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Ninja install failed' }
+          }
+          rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
+          rustup default stable
+          cargo --version
+
+      - name: Version
+        id: version
+        run: |
+          $text = Get-Content CMakeLists.txt -Raw
+          if ($text -notmatch 'project\(Nebula VERSION ([0-9]+\.[0-9]+\.[0-9]+)') { throw 'No project version in CMakeLists.txt' }
+          $version = $Matches[1]
+          if ('${{ github.ref_type }}' -eq 'tag') { $version = '${{ github.ref_name }}'.TrimStart('v') }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Nebula $version (${{ github.sha }})"
+
+      - name: Host (NebulaNative.exe) and unit tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . .\tools\enter_msvc_environment.ps1
+          function Run([string]$File, [string[]]$Arguments) {
+            & $File @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "$File failed with exit code $LASTEXITCODE" }
+          }
+          Run cmake @('-S', '.', '-B', 'build\host', '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DGALAXY_NATIVE_ISA=AVX2')
+          $tests = @('galaxy_dsu_tests', 'galaxy_pad_controller_tests', 'galaxy_controls_tests', 'galaxy_native_input_tests')
+          Run cmake (@('--build', 'build\host', '--target', 'NebulaNative') + $tests)
+          foreach ($test in $tests) { Run (Join-Path 'build\host' "$test.exe") @() }
+
+      - name: Game module (smg_game.dll)
+        run: |
+          .\native\build.ps1 -Petari native\petari -Build build\game
+          if ($LASTEXITCODE -ne 0) { throw "native\build.ps1 failed with exit code $LASTEXITCODE" }
+
+      - name: Setup and portable package
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ steps.version.outputs.version }}'
+          $bin = 'dist\bin'
+          New-Item -ItemType Directory -Force "$bin\tables" | Out-Null
+          Copy-Item build\host\NebulaNative.exe, build\game\smg_game.dll $bin
+          foreach ($table in 'material-names.tsv', 'rt-materials.tsv', 'rt-suns.tsv') {
+            $path = Join-Path "$bin\tables" $table
+            if (-not (Test-Path $path)) { New-Item -ItemType File $path | Out-Null }
+          }
+          .\installer\build-native-setup.ps1 -Version $version -Bin $bin -OutputDirectory dist `
+            -SetupName Nebula-Setup.exe -Repository '${{ github.repository }}' -SigningKey ''
+
+          # Portable: run NebulaNative.exe by hand (docs/BUILDING.md, step 4), with the importer for the disc.
+          $portable = "dist\Nebula-$version-portable"
+          New-Item -ItemType Directory -Force $portable | Out-Null
+          Copy-Item "$bin\NebulaNative.exe", "$bin\smg_game.dll", "$bin\tables\*.tsv", target\release\nebula-import.exe,
+            LICENSE, THIRD-PARTY-NOTICES.md, README.md $portable
+          @(
+            "Nebula $version (${{ github.sha }}), built by GitHub Actions in ${{ github.repository }}.",
+            '',
+            'Most players want Nebula-Setup.exe instead. To run this folder by hand:',
+            '',
+            '  nebula-import.exe import "D:\path\to\Super Mario Galaxy.rvz" --output content',
+            '  NebulaNative.exe --pak content\game.pak --nand "%LOCALAPPDATA%\Nebula\saves"',
+            '',
+            'Steam Controller motion under Steam Input: see docs/KEYBOARD_CONTROLS.md,',
+            '"Motion through Steam Input: SC2DSU and other DSU servers".'
+          ) | Set-Content -Encoding utf8 "$portable\HOW-TO-RUN.txt"
+          Compress-Archive -Path "$portable\*" -DestinationPath "dist\Nebula-$version-portable.zip" -Force
+          Get-ChildItem dist -File | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nebula-${{ steps.version.outputs.version }}-windows
+          path: |
+            dist/Nebula-Setup.exe
+            dist/Nebula-*-portable.zip
+          if-no-files-found: error
+
+      - name: Release (tags only)
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Nebula-Setup.exe
+            dist/Nebula-*-portable.zip
+          body: |
+            Nebula ${{ steps.version.outputs.version }} built from ${{ github.sha }} with Steam Controller motion
+            through Steam Input (SC2DSU). Unsigned build; Windows SmartScreen will say "Unknown publisher".

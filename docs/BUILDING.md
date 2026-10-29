@@ -68,3 +68,11 @@ sh native/sdk/os/tests/run_tests.sh
 
 Builds the disc import tool, the launcher and Setup, and writes `Nebula-Setup.exe` with the host and game module
 inside it.
+
+## Building on GitHub Actions
+
+`.github/workflows/windows-build.yml` runs all of the above on a GitHub-hosted Windows machine: the host and its
+controller tests, the game module, the importer and an unsigned `Nebula-Setup.exe`, plus a portable zip. Every push to
+`main` or `steam-controller-dsu-motion` (and **Run workflow** on the Actions tab) uploads them as the run's artifact;
+a pushed tag `v*` also publishes them as a release. The ray-tracing material tables are not in the source tree, so the
+package carries empty ones (the ray-traced lighting uses its defaults).
