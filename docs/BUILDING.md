@@ -75,4 +75,4 @@ inside it.
 controller tests, the game module, the importer and an unsigned `Nebula-Setup.exe`, plus a portable zip. Every push to
 `main` or `steam-controller-dsu-motion` (and **Run workflow** on the Actions tab) uploads them as the run's artifact;
 a pushed tag `v*` also publishes them as a release. The ray-tracing material tables are not in the source tree, so the
-package carries empty ones (the ray-traced lighting uses its defaults).
+package carries ones with no rows (the ray-traced lighting uses its defaults).

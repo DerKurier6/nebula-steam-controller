@@ -5,7 +5,7 @@
 # Setup is unsigned (the upstream release key stays with upstream) and checks this repository's releases for
 # updates, so a build from here is never replaced by an upstream release.
 #
-# The ray-tracing material tables (tables\*.tsv) are not in the source tree; the package carries empty ones, which the
+# The ray-tracing material tables (tables\*.tsv) are not in the source tree; the package carries ones with only a comment, which the
 # game reads exactly as missing tables (rt_materials.cpp): the ray-traced lighting uses its defaults.
 
 name: Windows build
@@ -91,9 +91,13 @@ jobs:
           $bin = 'dist\bin'
           New-Item -ItemType Directory -Force "$bin\tables" | Out-Null
           Copy-Item build\host\NebulaNative.exe, build\game\smg_game.dll $bin
+          # Setup refuses an empty file; a comment line is skipped by the game's table readers, so the table still has
+          # no rows (the same as no table).
           foreach ($table in 'material-names.tsv', 'rt-materials.tsv', 'rt-suns.tsv') {
             $path = Join-Path "$bin\tables" $table
-            if (-not (Test-Path $path)) { New-Item -ItemType File $path | Out-Null }
+            if (-not (Test-Path $path) -or (Get-Item $path).Length -eq 0) {
+              Set-Content -Encoding ascii -Path $path -Value "# $table is not in the source tree: no rows, the defaults apply."
+            }
           }
           .\installer\build-native-setup.ps1 -Version $version -Bin $bin -OutputDirectory dist `
             -SetupName Nebula-Setup.exe -Repository '${{ github.repository }}' -SigningKey ''
