@@ -206,7 +206,7 @@ AREAS = [
      "Input as Wii Remote reports, virtual device data, disc image, software THP: replace with native input, "
      "cooked assets and native video."),
     (r"^runtime/(?:src|include/galaxy)/(?:wiimote_|controller_|generic_hid|switch_controller|playstation_|"
-     r"steam_controller|native_input|input_bindings|pointer_control|host_pointer|rumble|tilt)", "host-input-devices",
+     r"steam_controller|dsu_|native_input|input_bindings|pointer_control|host_pointer|rumble|tilt)", "host-input-devices",
      "KEEP", "Device drivers: feed the native input API directly (no reports)."),
     (r"^runtime/(?:src|include/galaxy)/(?:mods|mod_import|mod_xml)", "host-mods", "CONVERT",
      "Mods: Riivolution files resolved by the cooker/loader; code patches as native hooks."),

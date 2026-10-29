@@ -151,6 +151,38 @@ through its pads' haptics. Its Bluetooth LE mode (28de:1106) is not read; use th
 starts gets the controllers Steam Input reads in `SDL_GAMECONTROLLER_IGNORE_DEVICES`; Nebula leaves those to Steam
 (they arrive as an Xbox controller), so a press never comes twice.
 
+## Motion through Steam Input: SC2DSU and other DSU servers
+
+Steam Input's Xbox controller has no motion sensors, so a Steam Controller (2026 or 2015) that Steam reads for the
+game points, shakes and tilts only with help: [SC2DSU](https://github.com/KillerPixelCrew/sc2dsu) reads its gyro and
+accelerometer and serves them as a cemuhook DSU server, and Nebula's DSU client takes them from there. Buttons and
+sticks still come through Steam Input, with your Steam layout.
+
+1. Start SC2DSU (any version; it serves on `127.0.0.1:26760`). Leave its axis settings at their defaults: they are
+   the standard DSU axes that Nebula, Dolphin and Cemu read.
+2. Start Nebula from Steam as usual. Turn the controller: the pointer follows. Right-stick click recenters it.
+
+The motion goes to the controller in use when it has no sensors of its own, so a controller Nebula reads directly
+(any Steam Controller without Steam Input, a DualSense, a Pro Controller) keeps its own gyro and is never moved twice.
+Any DSU server works the same way (BetterJoy, DS4Windows, JoyShockMapper, a phone app).
+
+The client's settings are in `dsu.ini` in `%LOCALAPPDATA%\Nebula`, written with the defaults at the first start and
+read again while the game runs:
+
+| Key | Default | |
+|---|---|---|
+| `enabled` | `1` | `0` turns the client off (so does the environment variable `NEBULA_DSU=0`) |
+| `server`, `port` | `127.0.0.1`, `26760` | the DSU server (`NEBULA_DSU_SERVER=host:port` overrides them) |
+| `slot` | `auto` | the server's controller slot 0-3; `auto` takes the first one that sends motion |
+| `gyro_pointer` | `1` | point with the gyro |
+| `gyro_sensitivity` | `1.0` | a picture width per 40 degrees of turn at 1.0 (0.2-5) |
+| `shake`, `shake_sensitivity` | `remote`, `3` | a shake as the Wii Remote's spin (`nunchuk`: the Nunchuk's, `off`), 1 strong .. 5 light |
+| `tilt` | `1` | the Star Ball and the ray steer with the controller's tilt |
+| `invert_pitch`, `invert_yaw`, `invert_roll`, `invert_accel` | `0` | turn an axis around for a server that sends it the other way |
+
+The log lines start with `[dsu]`: the server asked, the slot whose motion is used, and every ten seconds a count of
+the samples taken.
+
 8BitDo controllers work in each of their modes: X-input as an Xbox controller, Switch as a Pro Controller (stick
 calibration and motion only where the pad answers for them), D-input as a generic controller (rebind on the
 CONTROLS page).
