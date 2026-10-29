@@ -12,7 +12,7 @@ name: Windows build
 
 on:
   push:
-    branches: [main, steam-controller-dsu-motion]
+    branches: [main, steam-controller-dsu-motion, test-shadow-no-list-handles]
     tags: ['v*']
   workflow_dispatch:
 
